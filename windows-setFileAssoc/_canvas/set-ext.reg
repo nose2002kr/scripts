@@ -1,0 +1,10 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_Classes\.myext]
+@="MyAppExt"
+
+[HKEY_Classes\MyAppExt\shell\PlayWithXPlayer]
+@="Play with xPlayer"
+
+[HKEY_Classes\MyAppExt\shell\PlayWithXPlayer\command]
+@=""C:\Windows\System32\wsl.exe" "%1""
