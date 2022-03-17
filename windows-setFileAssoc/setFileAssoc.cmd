@@ -1,6 +1,6 @@
 @echo off
 
-rem useage: setFileAssoc.cmd .sh "Shell Script" "C:\Windows\System32\wsl.exe $(wslpath "%1")"
+rem usage: setFileAssoc.cmd .sh "Shell Script" "C:\Windows\System32\wsl.cmd %1 %%*"
 
 :: Arguments
 set FILE_EXT=%~1
@@ -15,6 +15,10 @@ call:CheckArg "%APP_CMD%"
 if %errorlevel% neq 0 goto help
 call:CheckArg "%~4%"
 if %errorlevel% equ 0 goto help
+
+setlocal enabledelayedexpansion
+set "TMP=!APP_CMD:%%%%=%%!"
+endlocal & set "APP_CMD=%TMP%"
 
 echo :: Arguments ---
 echo FILE_EXT: %FILE_EXT%
