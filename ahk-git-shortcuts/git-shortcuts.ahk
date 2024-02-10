@@ -17,32 +17,46 @@ if (GIT_REPO == "ERROR")
 IfNotExist %GIT_REPO%
     MsgBox, Unknown Dir
 
-
-GUIDE =
+GUIDE = 
 (
 What would you do?
 target: %GIT_REPO%
 
-1. discard all changes
-2. stash current changes
-3. apply stash
-4. switch branch
 )
+
+Loop
+{
+    SectionName := "Command " . A_Index
+
+    IniRead, descVal, git-util.ini, %SectionName%, Desc
+    If (descVal == "ERROR") {
+        Break
+    }
+    
+    GUIDE := GUIDE . "`n " . A_Index . "." . descVal
+}
+
 ToolTipAtCenter(GUIDE)
 
+; Wating for the Input
 Input, Selection, L1
-Switch Selection
-{
-    case 1       : doGitReset()
-    case 2       : doGitStashSave()
-    case 3       : doGitStashListAndApply()
-    case 4       : doGitShowBrancheAndCheckout()
-    case Chr(27) : ExitWithToolTip("Cancel", 0)
-    default      : ExitWithToolTip("Invalid option", -1)
-}
+
+; Take Command from the Selection
+Command := TakeCommand(Selection)
+
+; you can get `ListSelection.number` and `ListSelection.value`, If it exists.
+ListSelection := TakeChooseIfHasListingAction(Selection)
+
+; Combine and complete for the single command line to be completed.
+Command := CompleteCommand(Command, ListSelection)
+
+; Finally
+DoGitAction(Command) ;ToolTipAtCenter(Command)
 
 Sleep 2000
 ExitApp, 0
+
+
 
 
 
@@ -55,82 +69,80 @@ RemoveToolTip:
     Tooltip
     return
 
-doGitReset()
+TakeCommand(Selection) 
 {
-    Tooltip
-    ExecScriptTakeCout("git reset --hard", GIT_REPO)
-    if ErrorLevel = 0
-        ToolTipAtCenter("Done")
-}
-
-doGitStashSave()
-{
-    Tooltip
-    ExecScriptTakeCout("git stash --include-untracked", GIT_REPO)
-    if ErrorLevel = 0
-        ToolTipAtCenter("Done")
-}
-
-getGitStashs()
-{
-    queried := ExecScriptTakeCout("git stash list", GIT_REPO)
-    list:=""
-    number:=1
-    for index, el in StrSplit(queried, "`n")
+    ; Check if the selection is valid
+    If (Selection == Chr(27))
     {
-        if number > 9
-            break
-        if StrLen(el) = 0
-            continue
-
-        list := % list "`n" number ": " RegExReplace(el, "stash@\{([0-9])+\}: ([^:]+): (?:[a-z0-9]+ )?(.*)", "$3")
-        number++
+        ExitWithToolTip("Cancel", 0)
     }
-    return list
+
+    SectionName := "Command " . Selection
+
+    IniRead, Command, git-util.ini, %SectionName%, Cmd
+    ; If The Command doesn't exists by the Selection, then exit.
+    If (Command == "ERROR") {
+        ExitWithToolTip("Invalid option", -1)
+    }
+
+    return Command
 }
 
-doGitStashListAndApply()
+TakeChooseIfHasListingAction(Selection)
 {
-    Tooltip
-    list := getGitStashs()
-    SetTimer, RemoveToolTip, Off
-    ToolTipAtCenter(list)
-    Input, Selection, L1
-    if Selection = Chr(27)
+    ; Check if the selection is valid
+    If (Selection == Chr(27))
     {
-        ToolTipAtCenter("Cancel")
-        return
+        ExitWithToolTip("Cancel", 0)
     }
-    Tooltip
 
-    stashStr := StrSplit(list, "`n")[Selection + 1]
-    StringLeft, stashNo, stashStr, 1
-    stashNo--
-    cout := ExecScriptTakeCout("git stash apply " stashNo, GIT_REPO)
+    SectionName := "Command " . Selection
+
+    IniRead, Command, git-util.ini, %SectionName%, List
+    ; If The Listing command doesn't exists, just return with empty value.
+    If (Command == "ERROR") {
+        return ""
+    }
+    
+    IniRead, StartingFromZero, git-util.ini, %SectionName%, StartingFromZero
+
+    queried := ExecScriptTakeCout(Command, GIT_REPO)
     if ErrorLevel != 0
     {
-        msg:= % "Failed, `n" cout
-        ToolTipAtCenter(msg, 5000)
-        Sleep 5000
-        return
+        msg:= % "Failed, `n" queried
+        ExitWithToolTip(msg, ErrorLevel, 5000)
     }
-    ToolTipAtCenter("Done")
+
+    StartingAt := (StartingFromZero == "True") ? 0 : 1
+    ToolTipAtCenter(MakeAsChooser(queried, StartingAt))
+    
+    ; Wating for the Input
+    Input, Selection, L1
+    If (Selection == Chr(27))
+    {
+        ExitWithToolTip("Cancel", 0)
+    }
+
+    queried := StrSplit(queried, "`n")
+
+    Selection := Selection + (1 - StartingAt)
+    If (Selection < StartingAt || queried.MaxIndex() <= Selection)
+    {
+        ExitWithToolTip("Invalid input, input is exceed", -1)
+    }
+    
+    return { number: Selection, value: queried[Selection] }
+
 }
 
-getGitBranches()
+MakeAsChooser(QueriedString, StartingAt)
 {
-    queried := ExecScriptTakeCout("git branch --sort=-committerdate", GIT_REPO)
-    current := ExecScriptTakeCout("git rev-parse --abbrev-ref HEAD", GIT_REPO)
-
-    list := % "0: * " Trim(current, "`n")
-    number := 1
-    for index, el in StrSplit(queried, "`n")
+    number := StartingAt
+    for index, el in StrSplit(QueriedString, "`n")
     {
         if number > 9
             break
         if StrLen(el) = 0
-            continue
-        if InStr(Trim(el, "`n"), Trim(current,"`n")) > 0
             continue
         list = % list "`n" number ": " el
         number++
@@ -138,36 +150,77 @@ getGitBranches()
     return list
 }
 
-doGitShowBrancheAndCheckout()
+CompleteCommand(Command, ListSelection)
 {
-    Tooltip
-    list := getGitBranches()
-    SetTimer, RemoveToolTip, Off
-    ToolTipAtCenter(list)
-    Input, Selection, L1
-    if (Selection = Chr(27))
-    {
-        ToolTipAtCenter("Cancel")
-        return
+    If not ListSelection {
+        return Command
     }
-    Tooltip
 
-    branch := SubStr(StrSplit(list, "`n")[Selection + 1], 6)
-    cout := ExecScriptTakeCout("git checkout " branch, GIT_REPO)
-    if ErrorLevel != 0
+    FoundPos := RegExMatch(Command, "O)\{VALUE(\[((-)?[0-9\-]*):((-)?[0-9]*)\])?\}", Rgx)
+    If FoundPos >= 1 
     {
-        msg:= % "Failed, `n" cout
-        ToolTipAtCenter(msg, 5000)
-        Sleep 5000
-        return
+        length := StrLen(ListSelection.value)
+        startPos := MakeAbsolutePositions(length, Rgx.Value(2))
+        If (startPos < 1)
+        {
+            startPos := 1
+        }
+        endPos   := MakeAbsolutePositions(length, Rgx.Value(4))
+        If (endPos > length || endPos == -1)
+        {
+            endPos := length + 1
+        }
+        ;MsgBox % Rgx.Value(2) . ":" . Rgx.Value(4)
+
+        
+        length := endPos - startPos
+        CroppedValue := SubStr(ListSelection.value, startPos, length)
+
+        StringReplace, Command, Command, % Rgx.Value(0), %CroppedValue%
+
+        ;ToolTipAtCenter(value . ", " . startPos . ", " . length . ": " . value2, 5000)
+        ;Sleep 5000
+        ;MsgBox % ListSelection.value . ", " . startPos . ", " . length . "(" . endPos . ")(" . Rgx.Value(0) . "): " . CroppedValue 
     }
-    ToolTipAtCenter("Done")
+
+    StringReplace, Command, Command, {NUMBER}, % ListSelection.number
+
+    return Command
 }
 
-ExitWithToolTip(message, exitCode)
+MakeAbsolutePositions(length, position)
 {
-    ToolTipAtCenter(message, 1000)
-    Sleep 1000
+	If (position == "")
+	{
+		return -1
+	}
+	Else If position < 0
+	{
+		return length + position + 1
+	}
+	Else
+	{
+		return position + 1
+	}
+}
+
+DoGitAction(Command)
+{
+    Tooltip
+    cout := ExecScriptTakeCout(Command, GIT_REPO)
+    if ErrorLevel = 0
+        ToolTipAtCenter("Done")
+    Else if ErrorLevel != 0
+    {
+        msg:= % "Failed, `n" cout
+        ExitWithToolTip(msg, ErrorLevel, 5000)
+    }
+}
+
+ExitWithToolTip(message, exitCode, presentTime = 1000)
+{
+    ToolTipAtCenter(message, presentTime)
+    Sleep % presentTime
     ExitApp %exitCode%
     return
 }
@@ -183,7 +236,7 @@ ExecScriptTakeCout(Script, WorkDir="")
     shell := ComObjCreate("WScript.Shell")
 	if WorkDir
     	shell.CurrentDirectory := WorkDir
-    exec := shell.Exec(A_ComSpec " /C " Script " 2>&1")
+    exec := shell.Exec(A_ComSpec " /C bash -c '" Script "' 2>&1")
     ToolTipAtCenter(Script, 1000)
     Sleep 200
 	cout := exec.StdOut.ReadAll()
@@ -193,6 +246,9 @@ ExecScriptTakeCout(Script, WorkDir="")
 
 ToolTipAtCenter(msg, presentTime = 0)
 {
+    Tooltip
+    SetTimer, RemoveToolTip, Off
+
     lines := StrSplit(msg, "`n")
 	row := lines.Length()
 	column := 0
