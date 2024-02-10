@@ -236,7 +236,12 @@ ExecScriptTakeCout(Script, WorkDir="")
     shell := ComObjCreate("WScript.Shell")
 	if WorkDir
     	shell.CurrentDirectory := WorkDir
-    exec := shell.Exec(A_ComSpec " /C bash -c '" Script "' 2>&1")
+    
+    If (InStr(Script, "echo")) {
+        exec := shell.Exec(A_ComSpec " /C bash -c '" Script "' 2>&1")
+    } Else {
+        exec := shell.Exec(A_ComSpec " /C " Script " 2>&1")
+    }
     ToolTipAtCenter(Script, 1000)
     Sleep 200
 	cout := exec.StdOut.ReadAll()
