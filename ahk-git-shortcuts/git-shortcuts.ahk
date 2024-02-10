@@ -212,7 +212,7 @@ DoGitAction(Command)
         ToolTipAtCenter("Done")
     Else if ErrorLevel != 0
     {
-        msg:= % "Failed, `n" cout
+        msg:= % "Failed (" . ErrorLevel . "), `n" cout
         ExitWithToolTip(msg, ErrorLevel, 5000)
     }
 }
@@ -239,10 +239,11 @@ ExecScriptTakeCout(Script, WorkDir="")
     
     If (InStr(Script, "echo")) {
         exec := shell.Exec(A_ComSpec " /C bash -c '" Script "' 2>&1")
+        ToolTipAtCenter("sh: " . Script, 1000)
     } Else {
         exec := shell.Exec(A_ComSpec " /C " Script " 2>&1")
+        ToolTipAtCenter("bat: " . Script, 1000)
     }
-    ToolTipAtCenter(Script, 1000)
     Sleep 200
 	cout := exec.StdOut.ReadAll()
     ErrorLevel := exec.exitCode
